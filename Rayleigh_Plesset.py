@@ -4,15 +4,22 @@ import matplotlib.pyplot as plt
 
 rho = 1000      # density [kg/m^3]
 mu = 1e-3       # viscosity [Pa.s]
-sigma = 0.072   # surface tension [N/m]
-p_inf = 1e5     # ambient pressure [Pa]
+gamma = 0.072   # surface tension [N/m]
 R0 = 10e-6      # initial radius [m]
+p_inf_init = 1e5                    # initial ambient pressure [Pa]
+p0 = p_inf_init + 2*gamma/R0        # initial gas pressure in bubble [Pa], assuming equilibrium
+
+def p_inf_t(t):
+    # ambient pressure as a function of time
+    if t < 25e-6:
+        return p_inf_init
+    else:
+        return 5e5   # step increase in ambient pressure
 
 def pB(R):
     # gas pressure inside bubble (polytropic)
-    p0 = 3e5    # initial gas pressure [Pa]
     kappa = 1.4 # polytropic index
-    return (p0 + 2*sigma/R0) * (R0 / R)**(3*kappa)
+    return (p0 + 2*gamma/R0) * (R0 / R)**(3*kappa)
 
 def rp_equation(t, y):
     """
@@ -21,14 +28,14 @@ def rp_equation(t, y):
     y[1]: radial velocity Rdot
     --------------------------------------------
     dR/dt = Rdot
-    dRdot/dt = (1/R) * ((1/rho)[ (pB(R) - p_inf) - (2*sigma)/(R) - (4*mu*Rdot)/(R)] - (3/2)*Rdot^2)
+    dRdot/dt = (1/R) * ((1/rho)[ (pB(R) - p_inf) - (2*gamma)/(R) - (4*mu*Rdot)/(R)] - (3/2)*Rdot^2)
     --------------------------------------------
     Returns: [dR/dt, dRdot/dt]
     """
 
     R, Rdot = y                                             # y[0]: radius, y[1]: radial velocity
     term = (3/2)*Rdot**2                                    # inertial term
-    RHS = (pB(R) - p_inf) - 2*sigma/R - 4*mu*Rdot/R         # right-hand side
+    RHS = (pB(R) - p_inf_t(t)) - 2*gamma/R - 4*mu*Rdot/R         # right-hand side
     Rddot = (RHS/rho - term) / R
     return [Rdot, Rddot]
 
