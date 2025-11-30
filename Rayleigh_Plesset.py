@@ -15,8 +15,8 @@ k = 1.00                # polytropic index (1.07 for isothermal-ish, 1.0 for iso
 p_gas_0 = p_inf_static + (2 * sigma_0 / R0) # initial gas pressure [Pa]
 
 #============================ Acoustic Properties =============================#
-f = 1.5e6                 # frequency [Hz]
-P_A = 90e3             # pressure amplitude [Pa]
+f = 1.5e6               # frequency [Hz]
+P_A = 90e3              # pressure amplitude [Pa]
 omega = 2 * np.pi * f   # angular frequency [rad/s]
 
 def P_driving(t):
