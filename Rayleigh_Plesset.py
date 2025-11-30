@@ -9,15 +9,16 @@ gamma = 0.072           # surface tension of water [N/m]
 
 #============================= Initial Properties =============================#
 sigma_0 = 0.0           # initial surface tension [N/m] (Assumption: Buckled)
-R0 = 10e-6              # initial radius [m]
+R0 = 3.5e-6             # initial radius [m]
 p_inf_static = 101325   # ambient pressure [Pa]
-k = 1.07                # polytropic index (1.07 for isothermal-ish, 1.4 for adiabatic)
+k = 1.00                # polytropic index (1.07 for isothermal-ish, 1.0 for isothermal, 1.4 for adiabatic)
 p_gas_0 = p_inf_static + (2 * sigma_0 / R0) # initial gas pressure [Pa]
 
 #============================ Acoustic Properties =============================#
-f = 2e6                 # frequency [Hz]
+f = 1.5e6                 # frequency [Hz]
+P_A = 90e3             # pressure amplitude [Pa]
 omega = 2 * np.pi * f   # angular frequency [rad/s]
-P_A = 200e3             # pressure amplitude [Pa]
+
 def P_driving(t):
     """Time-varying driving pressure P_inf(t)"""
     return p_inf_static + P_A * np.sin(omega * t)
@@ -97,8 +98,8 @@ def rp_equation(t, y, chi, kappa_s):
 
 #============================== Main Solve Loop ===============================#
 # Example: Select ONE set of parameters to solve
-current_kappa_s = 2.4e-9  # Example value: 2.4e-9 kg/s
-current_chi = 1.0         # Example value: 1.0 N/m
+current_kappa_s = 2.4e-8  # Example value: 2.4e-8 kg/s
+current_chi = 0.6         # Example value: 0.6 N/m
 
 t_span = (0, 10/f) # Simulate 10 cycles
 t_eval = np.linspace(t_span[0], t_span[1], 1000)

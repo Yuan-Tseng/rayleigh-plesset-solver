@@ -1,0 +1,43 @@
+# ==========================
+# Python & Environment
+# ==========================
+__pycache__/
+*.py[cod]
+.venv/
+env/
+.conda/
+.ipynb_checkpoints/
+
+# ==========================
+# IDE & System Files
+# ==========================
+.vscode/
+.idea/
+.DS_Store
+
+# ==========================
+# Project Data (CRITICAL)
+# ==========================
+# Ignore the entire Data folder (Recommended)
+Data/
+
+# Or ignore specific large file types wherever they are
+*.avi
+*.dat
+*.mp4
+
+# Optional: Ignore CSVs if they are large raw data
+# Comment this out with # if you want to commit your processed CSVs
+# *.csv
+
+# ==========================
+# Outputs & Temporary Files
+# ==========================
+# Ignore generated plots so you don't clutter the repo
+*.png
+*.jpg
+*.pdf
+
+# Ignore raw numpy saves
+*.npy
+*.npz
