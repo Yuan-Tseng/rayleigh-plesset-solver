@@ -11,10 +11,10 @@ This repository contains the Python analysis pipeline for the laboratory session
 4.  **Parameter Fitting:** Allows for manual optimization of shell viscosity ($\kappa_s$) and shell elasticity ($\chi$) to match experimental data.
 
 ## Questions
-1. How is the initial R determined through image processing? 
-2. Which interval of the video should be considered?
-3. What is the fps and the pixel size? 
-4. How should the csv be processed? 
+1. How is the initial R determined through image processing? Current R is hard to define
+2. Which interval of the video should be considered? Only the stably fluctuating one? But there's only 7-8 cycles of fluctuation. 
+3. What is the fps and the pixel size? 10M fps, pixel size unknown. 
+4. How should the csv be processed? What is the unit of it? 
 5. Next step: How can I optimize chi and kappa? 
 
 ## Installation
