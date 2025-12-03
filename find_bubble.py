@@ -1,8 +1,30 @@
 import cv2
 import os
 import shutil
+import numpy as np
+import glob
 
-# ============================= Bubble ROI Selection =============================#
+# ================= Settings =================
+# 1. Folder for input images
+"""
+Data/AVI24/Camera_15_02_48/Camera_15_02_48_cropped_picture
+Data/AVI24/Camera_15_08_33/Camera_15_08_33_cropped_picture
+Data/AVI24/Camera_15_16_28/Camera_15_16_28_cropped_picture
+Data/AVI24/Camera_15_21_51/Camera_15_21_51_cropped_picture
+"""
+
+INPUT_FOLDER = "Data/AVI24/Camera_15_08_33/Camera_15_08_33_cropped_picture"
+OUTPUT_FILENAME = "Bubble_Evolution_Grid.png"
+
+FPS = 1e6             # 1 Million FPS (1 us per frame)
+START_TIME_US = 30    
+TIME_OFFSET = 0      
+
+# 2. Grid settings for output image
+ROWS = 4
+COLS = 10
+SKIP_FRAMES = 1       # Take every 2nd frame
+# ===========================================
 
 def select_bubble_roi(video_path):
     cap = cv2.VideoCapture(video_path)
@@ -135,18 +157,100 @@ def select_and_save_cropped(video_path):
     out.release()
     print(f"\nSaved {frame_count} Frames")
 
-# ============================================================================
-# Usage Example
-# ============================================================================
+def create_bubble_grid():
+    # 1. read all .png files in the input folder and sort them
+    files = glob.glob(os.path.join(INPUT_FOLDER, "*.png"))
+    
+    if not files:
+        print(f"Error: {INPUT_FOLDER} no PNG files found.")
+        return
+
+    # Logic to sort files based on the numeric part after the last underscore
+    try:
+        files.sort(key=lambda f: int(os.path.splitext(f)[0].split('_')[-1]))
+    except ValueError:
+        print("Warning: Filename format is incorrect for sorting. Ensure filenames end with an underscore followed by a number.")
+        files.sort()
+
+    # 2. Sample files according to SKIP_FRAMES
+    sampled_files = files[::SKIP_FRAMES]
+    
+    # Only need ROWS * COLS images
+    total_images_needed = ROWS * COLS
+    if len(sampled_files) < total_images_needed:
+        print(f"Warning: {total_images_needed} images needed, not enough images in folder")
+    else:
+        sampled_files = sampled_files[:total_images_needed]
+
+    # 3. Process each image: add time label and border
+    processed_images = []
+    ref_img = cv2.imread(sampled_files[0])
+    h, w, _ = ref_img.shape
+    
+    # TEXT settings
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.35 
+    thickness = 1
+    color = (0, 0, 0) # Black color
+    
+    for i, file_path in enumerate(sampled_files):
+        img = cv2.imread(file_path)
+        if img is None: continue
+        
+        # Ensure same size
+        if img.shape != (h, w, 3):
+            img = cv2.resize(img, (w, h))
+            
+        # Time calculation
+        # Original frame index = i * SKIP_FRAMES
+        # Time = Index / FPS * 1e6 (us)
+        frame_idx = i * SKIP_FRAMES
+        time_us = START_TIME_US + (frame_idx / FPS) * 1e6 + TIME_OFFSET
+        
+        label_text = f"t={int(time_us)}us"
+        cv2.putText(img, label_text, (2, 12), font, font_scale, color, thickness, cv2.LINE_AA)
+        # Add border
+        img = cv2.copyMakeBorder(img, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+        
+        processed_images.append(img)
+
+    # 4. If not enough images, fill with blank
+    while len(processed_images) < total_images_needed:
+        blank = np.zeros((h+2, w+2, 3), dtype=np.uint8) # +2 for border
+        processed_images.append(blank)
+
+    # 5. Create grid
+    rows_img = []
+    for r in range(ROWS):
+        # This row of images 
+        row_imgs = processed_images[r*COLS : (r+1)*COLS]
+        # Horizontal concatenation
+        row_concat = np.hstack(row_imgs)
+        rows_img.append(row_concat)
+    
+    # Vertical concatenation
+    final_grid = np.vstack(rows_img)
+    
+    # 6. Save final grid image
+    cv2.imwrite(OUTPUT_FILENAME, final_grid)
+    print(f"Grid Generation Successful: {OUTPUT_FILENAME}")
+
 if __name__ == "__main__":
 
-    for video_file in [
-        'Data/AVI24/Camera_15_02_48/Camera_15_02_48.avi',
-        'Data/AVI24/Camera_15_08_33/Camera_15_08_33.avi',
-        'Data/AVI24/Camera_15_16_28/Camera_15_16_28.avi',
-        'Data/AVI24/Camera_15_21_51/Camera_15_21_51.avi'
-    ]:
-        if os.path.exists(video_file):
-            select_and_save_cropped(video_file)
-        else:
-            print(f"File not found: {video_file}")
+    reselect = False
+    if reselect:
+        for video_file in [
+            'Data/AVI24/Camera_15_02_48/Camera_15_02_48.avi',
+            'Data/AVI24/Camera_15_08_33/Camera_15_08_33.avi',
+            'Data/AVI24/Camera_15_16_28/Camera_15_16_28.avi',
+            'Data/AVI24/Camera_15_21_51/Camera_15_21_51.avi'
+        ]:
+            if os.path.exists(video_file):
+                select_and_save_cropped(video_file)
+            else:
+                print(f"File not found: {video_file}")
+    
+    create_grid = True
+    if create_grid:
+        create_bubble_grid()
+    
