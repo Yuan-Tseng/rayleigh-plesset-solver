@@ -48,11 +48,11 @@ def plot_voltage_signal():
     """
     Plot the voltage signal and mark detected peaks.
     """
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(10, 4))
     plt.plot(time * 10**6, voltage * 10**3, label='Volatge (mV)')
     plt.xlabel('Time (us)')
     plt.ylabel('Volatge (mV)')
-    plt.title('Hydrophone Voltage Signal with Detected Peaks')
+    # plt.title('Hydrophone Voltage Signal with Detected Peaks')
     plt.legend()
     plt.grid()
     plt.show() 
@@ -61,11 +61,11 @@ def plot_pressure_signal(time, pressure, peak_times, peak_pressures):
     """
     Plot the pressure signal and mark detected peaks.
     """
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(13, 4))
     plt.plot(t*10**6, p*10**3, label='Pressure (kPa)')
     plt.xlabel('Time (us)')
     plt.ylabel('Pressure (kPa)')
-    plt.title('Hydrophone Pressure Signal with Detected Peaks')
+    # plt.title('Hydrophone Pressure Signal with Detected Peaks')
     plt.legend()
     plt.grid()
     plt.show()
