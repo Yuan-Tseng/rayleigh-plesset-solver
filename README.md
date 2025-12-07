@@ -10,6 +10,7 @@ This repository contains the analysis pipeline for the laboratory session on ult
 These values must be updated in the Python scripts (`FPS`, `SCALE`, `Sensitivity`).
 
 * **Frame Rate (FPS):** `10,000,000` (10 Million FPS, i.e., 0.1 $\mu s$ per frame).
+* **Driving Frequency:** 1.5MHz
 * **Pixel Scale:** `0.16` $\mu m$/pixel (FOV: $64 \times 40 \mu m$).
 * **Hydrophone Sensitivity:** `39 mV/MPa` (or $3.9 \times 10^{-8}$ V/Pa).
 * **Sample Setup:** Microbubbles are contained between transparent sheets (acoustically and optically transparent) to prevent floating while allowing observation.
@@ -17,7 +18,7 @@ These values must be updated in the Python scripts (`FPS`, `SCALE`, `Sensitivity
 ### Trigger & Timing Sequence (The "Delayer")
 Understanding the timing is essential to interpret the video start time and flash duration.
 1.  **$t = 0~\mu s$:** Transducer triggered.
-2.  **$t \approx 53\text{-}54~\mu s$:** **1st Flashlight** activates.
+2.  **$t \approx 53\text{-}54~\mu s$:** **1st Flashlight** activates. 4.5 us delay, 130 duration 
 3.  **$t = 55~\mu s$:** **Camera** starts recording.
 4.  **$t \approx 56~\mu s$:** Acoustic wave reaches the bubble (Distance $\approx 85$ mm / Speed of Sound in water).
 5.  **$t \approx 60~\mu s$:** **2nd Flashlight** activates.

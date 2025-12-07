@@ -21,6 +21,11 @@ video_file = 'Data/AVI24/Camera_15_16_28/Camera_15_16_28.avi'
 # 'Data/AVI24/Camera_15_16_28/Camera_15_16_28.avi'
 # 'Data/AVI24/Camera_15_21_51/Camera_15_21_51.avi'
 
+csv_file = 'Data/AVI24/Camera_15_16_28/Camera_15_16_28_radius.csv'
+    #'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'
+    #'Data/AVI24/Camera_15_08_33/Camera_15_08_33_radius.csv'
+    #'Data/AVI24/Camera_15_16_28/Camera_15_16_28_radius.csv'
+
 def auto_canny(image, sigma=0.33):
     # Calculate the median of the pixel intensities
     v = np.median(image)
@@ -339,20 +344,72 @@ def save_to_csv(time_array, radius_array):
     print(f"Total frames processed: {len(df)}; Valid frames: {len(df_clean)}; Time Priod: {df_clean['Time_s'].iloc[-1]:.8f} s")
     print(f"Initial Radius: {df_clean['Radius_um'].iloc[0]:.2f} um; Max Radius: {df_clean['Radius_um'].max():.2f} um")
 
+def analyze_radius_stats(file_path):
+    """
+    Reads a bubble radius CSV and prints key statistics.
+    """
+    # Check if file exists first
+    if not os.path.exists(file_path):
+        print(f"Error: File not found at {file_path}")
+        return
+
+    try:
+        # Read the CSV file
+        df = pd.read_csv(file_path)
+        window_df = df.iloc[0:150]
+        
+        # Check if 'Radius_um' column exists
+        if 'Radius_um' not in df.columns:
+            print("Error: Column 'Radius_um' not found in CSV.")
+            print(f"Available columns: {window_df.columns.tolist()}")
+            return
+
+        # Get the Radius_um column data
+        radius_data = window_df['Radius_um']
+
+        # 1. Get Initial Radius (the first recorded frame)
+        R0 = radius_data.iloc[0]
+
+        # 2. Get Maximum and Minimum Radius
+        R_max = radius_data.max()
+        R_min = radius_data.min()
+
+        # 3. Get the Index (Time) where Max occurred (Optional but useful)
+        # Assuming you have a 'Time_s' column
+        time_at_max = window_df.loc[radius_data.idxmax(), 'Time_s']
+        time_at_min = window_df.loc[radius_data.idxmin(), 'Time_s']
+
+        # Print the results
+        print("-" * 30)
+        print(f"File: {os.path.basename(file_path)}")
+        print("-" * 30)
+        print(f"Initial Radius (R0): {R0:.4f} um")
+        print(f"Maximum Radius     : {R_max:.4f} um (at t = {time_at_max*1e6:.1f} us)")
+        print(f"Minimum Radius     : {R_min:.4f} um (at t = {time_at_min*1e6:.1f} us)" )
+        print(f"Expansion Ratio    : {R_max/R0:.2f}x") # How many times it expanded
+        print("-" * 30)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    # Run processing
-    t, r = extract_radius_from_small_bubbles(
-                                    video_file, 
-                                    FPS, 
-                                    SCALE, 
-                                    show_video=True, 
-                                    roi=find_bubble.select_bubble_roi(video_file),
-                                    save_process_video=True)
+    analyze_mode = True # Doing post processing or not
     
-    # Plot radius vs time
-    plot_filename = os.path.splitext(video_file)[0] + '_plot.png'
-    plot(save_path=plot_filename)
+    if not analyze_mode:
+        # Run processing
+        t, r = extract_radius_from_small_bubbles(
+                                        video_file, 
+                                        FPS, 
+                                        SCALE, 
+                                        show_video=True, 
+                                        roi=find_bubble.select_bubble_roi(video_file),
+                                        save_process_video=True)
+        
+        # Plot radius vs time
+        plot_filename = os.path.splitext(video_file)[0] + '_plot.png'
+        plot(save_path=plot_filename)
 
-    # Save to CSV
-    save_to_csv(t, r)
+        # Save to CSV
+        save_to_csv(t, r)
+    else:
+        analyze_radius_stats(csv_file)
