@@ -11,16 +11,19 @@ gamma = 0.072           # surface tension of water [N/m]
 
 #============================= Initial Properties =============================#
 sigma_0 = 0.0               # initial surface tension [N/m] (Assumption: Buckled)
-p_inf_static = 98325        # ambient pressure [Pa]
+p_inf_static = 100000       # ambient pressure [Pa]
 k = 1.0                     # polytropic index (1.07 for isothermal-ish, 1.0 for isothermal, 1.4 for adiabatic)
 hydrophone_sensitivity = 39 # [mV/MPa]
-current_kappa_s = 12e-9     # Example value: [1.5 12]e-9 kg/s 
-current_chi = 2             # Example value: [0.3 2.0] N/m
-pressure_scaling = 0.5
+current_kappa_s = 4e-9      # Shell Viscosity, Example value: [1.5 12]e-9 kg/s 
+current_chi = 0.3           # Elastic Modulus, Example value: [0.3 2.0] N/m
+pressure_scaling = 1        # Pressure Scaling
 
 #================================= CSV File ===================================#
-HYD_FILE = 'Data/cleaned_F1--1.5mhz-100mV-4.csv'
-EXP_CSV = 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'
+HYD_FILE = 'Data/cleaned_F1--1.5mhz-100mV-4.csv'                    # Input pressure detected by hydrophone, signal averaged
+EXP_CSV = 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'   # temporal radius data computed
+# 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'
+# 'Data/AVI24/Camera_15_08_33/Camera_15_08_33_radius.csv'
+# 'Data/AVI24/Camera_15_16_28/Camera_15_16_28_radius.csv'
 
 try:
     df = pd.read_csv(HYD_FILE)
@@ -83,11 +86,11 @@ def get_marmottant_term(R, Rdot, chi, kappa_s):
     sigma = 0
     if R <= R_buck:     # Buckled regime
         sigma = 0
+    elif R > R_buck and R < R_rupt:   # Elastic regime
+        sigma = -2 * chi * ((R/R_buck)**2 - 1)/R
     elif R >= R_rupt:   # Ruptured regime
         sigma = -2 * gamma/R
-    else:               # Elastic regime
-        sigma = -2 * chi * ((R/R_buck)**2 - 1)/R
-
+    
     return sigma + shell_visc_term
 
 # 3. RP Linearization
