@@ -1,260 +1,246 @@
 import numpy as np
 import pandas as pd
-from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d 
 from scipy.optimize import minimize
 
-#============================== Water Properties ==============================#
-rho = 1000              # density [kg/m^3]
-mu = 1e-3               # viscosity [Pa.s]
-gamma = 0.072           # surface tension of water [N/m]
+# ==============================================================================
+# 1. CONFIGURATION & CONSTANTS
+# ==============================================================================
+# Physics Constants
+RHO = 1000.0              # [kg/m^3]
+MU = 1e-3                 # [Pa.s]
+GAMMA = 0.072             # [N/m]
+P_INF_STATIC = 100000.0   # [Pa]
+K_POLY = 1.4              # Polytropic index (Adiabatic recommended)
 
-#============================= Initial Properties =============================#
-sigma_0 = 0.0               # initial surface tension [N/m] (Assumption: Buckled)
-p_inf_static = 100000       # ambient pressure [Pa]
-k = 1.0                     # polytropic index (1.07 for isothermal-ish, 1.0 for isothermal, 1.4 for adiabatic)
-hydrophone_sensitivity = 39 # [mV/MPa]
-pressure_scaling = 1        # Pressure Scaling
+# Experimental Settings
+HYDROPHONE_SENSITIVITY = 39.0 # [mV/MPa]
+CAMERA_OFFSET = 55.75e-6      # [s] Time alignment offset
+FIT_WINDOW = (55e-6, 70e-6)   # [s] Optimization window
 
-#================================= CSV File ===================================#
-HYD_FILE = 'Data/cleaned_F1--1.5mhz-100mV-4.csv'                    # Input pressure detected by hydrophone, signal averaged
-EXP_CSV = 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'   # temporal radius data computed
-# 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'
-# 'Data/AVI24/Camera_15_08_33/Camera_15_08_33_radius.csv'
-# 'Data/AVI24/Camera_15_16_28/Camera_15_16_28_radius.csv'
+# File Paths
+FILE_PRESSURE = 'Data/cleaned_F1--1.5mhz-100mV-4.csv'
+FILE_RADIUS   = 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'
 
-try:
-    df = pd.read_csv(HYD_FILE)
-    time = df['Time_s'].values # [s]
-    voltage = df['Voltage_V'].values * 1e3 # [mV]
-    pressure = voltage / hydrophone_sensitivity * 1e6 * pressure_scaling # [Pa]
-    print(f"Processed Signal: {len(time)} Data Points, Time Interval: {time[0]*1e6:.1f} - {time[-1]*1e6:.1f} us")
-except Exception as e:
-    print(f"Error: Cannot read CSV, check column or path\n{e}")
-    exit()
+# Optimization Scaling
+SCALE_KS = 1e9  # Scale Ks to ~1.0
 
-try:
-    df_r = pd.read_csv(EXP_CSV)
-    t_r_exp = df_r['Time_s'].values
-    r_r_exp = df_r['Radius_um'].values
+# ==============================================================================
+# 2. DATA LOADING FUNCTIONS
+# ==============================================================================
+def load_data():
+    """Loads and aligns pressure and radius data."""
+    try:
+        df_p = pd.read_csv(FILE_PRESSURE)
+        t_p = df_p['Time_s'].values
+        # Convert voltage to raw acoustic pressure [Pa]
+        p_raw_acoustic = (df_p['Voltage_V'].values * 1e3 / HYDROPHONE_SENSITIVITY) * 1e6
+        print(f"✅ Pressure Data Loaded: {len(t_p)} points")
+    except Exception as e:
+        raise ValueError(f"Error loading pressure file: {e}")
+
+    try:
+        df_r = pd.read_csv(FILE_RADIUS)
+        t_r = df_r['Time_s'].values + CAMERA_OFFSET
+        r_r = df_r['Radius_um'].values
+        R0 = r_r[0] * 1e-6 # Initial radius [m]
+        print(f"✅ Radius Data Loaded: {len(t_r)} points, R0 = {R0*1e6:.2f} um")
+    except Exception as e:
+        raise ValueError(f"Error loading radius file: {e}")
+
+    return t_p, p_raw_acoustic, t_r, r_r, R0
+
+# ==============================================================================
+# 3. PHYSICS MODEL (Rayleigh-Plesset + Marmottant)
+# ==============================================================================
+def get_marmottant_pressure(R, Rdot, chi, kappa_s, R0, sigma_0=0.0):
+    """Calculates the surface pressure term including shell viscosity."""
+    if chi < 1e-5: chi = 1e-5
     
-    # --- Time Alignment ---
-    camera_start_offset = 55.75e-6 
-    t_r_exp_aligned = t_r_exp + camera_start_offset
-    
-    # Take the first value to be R0 (Initial Radius)
-    R0_exp = r_r_exp[0] * 1e-6 # [m]
-    R0 = R0_exp
-    p_gas_0 = p_inf_static + (2 * sigma_0 / R0) # initial gas pressure [Pa]
-    print(f" Successful Read Radius: {len(t_r_exp)} Data Points")
-    print(f" Initial Radius: {R0_exp*1e6:.2f} um")
-    
-except Exception as e:
-    print(f"Failed Reading Experiment CSV: {e}")
-    exit()
-
-#============================ Acoustic Properties =============================#
-p_total = p_inf_static + pressure
-P_interp_func = interp1d(time, p_total, kind='linear', bounds_error=False, fill_value=p_inf_static) # Make it continuous
-def P_driving(t): 
-    """Return absolute pressure at that timestep"""
-    return P_interp_func(t)
-
-# 1. Image Processing
-def R_effective(Area):
-    """This is the R resolved by cv2 from image processing"""
-    return np.sqrt(Area/np.pi)
-
-# 2. Marmottant Model
-def get_marmottant_term(R, Rdot, chi, kappa_s):
-    """
-    chi: Elastic Modulus [N/m]
-    kappa_s: Shell Viscosity [kg/s]
-    Returns the combined surface tension and shell viscosity term
-    """
-    
-    # Calculate critical radii based on current Elastic Modulus (chi)
+    # Critical Radii
     R_buck = R0 / np.sqrt(sigma_0/chi + 1)
-    R_rupt = R_buck * np.sqrt(1 + gamma/chi)
+    R_rupt = R_buck * np.sqrt(1 + GAMMA/chi)
 
-    # 1. Shell Viscosity Term (always present)
-    shell_visc_term = -4 * kappa_s * Rdot / (R**2)
+    # 1. Shell Viscosity
+    term_viscosity = -4 * kappa_s * Rdot / (R**2)
 
-    # 2. Dynamic Surface Tension Term
+    # 2. Dynamic Surface Tension
     sigma = 0
-    if R <= R_buck:     # Buckled regime
+    if R <= R_buck:
         sigma = 0
-    elif R > R_buck and R < R_rupt:   # Elastic regime
-        sigma = -2 * chi * ((R/R_buck)**2 - 1)/R
-    elif R >= R_rupt:   # Ruptured regime
-        sigma = -2 * gamma/R
-    
-    return sigma + shell_visc_term
-
-def no_marmottant_term(R):
-    sigma = -2 * gamma/R
-
-    return sigma
-
-# 3. RP Linearization
-"""
-Rayleigh-Plesset equation First Order ODE system, including Marmottant model for shell properties
-y[0]: bubble radius R
-y[1]: radial velocity Rdot
-
-Modified RP with Marmottant model:
-LHS(Inertial terms) = (P_bubble - P_infinity) - P_viscous - P_surface_tension(Marmottant term)
---------------------------------------------
-dR/dt = Rdot
-dRdot/dt = (1/R) * ( (1/rho)[(pB(R) - p_inf) - (4*mu*Rdot)/(R) + (Marmottant term)] - (3/2)*Rdot^2)
---------------------------------------------
-Returns: [dR/dt, dRdot/dt]
-"""
-def rp_equation(t, y, chi, kappa_s, marmottant):
-    R = y[0]
-    Rdot = y[1]
-    
-    # Safety check to prevent negative radius calculation errors
-    if R <= 0: R = 1e-9
-
-    # 1. Inertial Term (LHS related)
-    inertial_term = 1.5 * Rdot**2
-    
-    # 2. Viscous Term (Liquid)
-    viscous_term = -4 * mu * Rdot / R
-    
-    # 3. Gas Pressure Term
-    # Using p_gas_0 to be physically consistent
-    pressure_term = p_gas_0 * (R0/R)**(3*k) - P_driving(t)
-    
-    # 4. Marmottant Term (Shell Viscosity + Surface Tension)
-    marmottant_term = get_marmottant_term(R, Rdot, chi, kappa_s)
-
-    # 5. No Marmottant Term (Surface Tension)
-    without_marmottant = no_marmottant_term(R)
-
-    # Combine RHS terms, Note: viscous_term and marmottant_term already calculate negative forces
-    if marmottant:
-        RHS = pressure_term + viscous_term + marmottant_term
+    elif R < R_rupt:
+        sigma = chi * ((R/R_buck)**2 - 1)
     else:
-        RHS = pressure_term + viscous_term + without_marmottant
+        sigma = GAMMA
     
-    # Solve for Rddot
-    Rddot = (RHS/rho - inertial_term) / R
+    # Pressure term from tension
+    term_tension = -2 * sigma / R
+    
+    return term_tension + term_viscosity
+
+def rp_solver(t, y, chi, kappa_s, R0, p_interp_func, use_marmottant=True):
+    """The ODE system for solve_ivp."""
+    R, Rdot = y
+    if R <= 1e-9: R = 1e-9 
+
+    # 1. Inertial & Viscous Terms (Liquid)
+    inertial = 1.5 * Rdot**2
+    viscous = -4 * MU * Rdot / R
+    
+    # 2. Gas Pressure Physics (Fix for Clean Bubble)
+    if use_marmottant:
+        # Marmottant: Initial state is Buckled (Sigma=0)
+        # So internal pressure balances ambient pressure exactly.
+        p_gas_0 = P_INF_STATIC
+    else:
+        # Clean Bubble: Initial state has water surface tension (Sigma=0.072)
+        # Internal pressure must be HIGHER to balance Laplace pressure.
+        p_gas_0 = P_INF_STATIC + (2 * GAMMA / R0)
+
+    # 3. Driving Pressure
+    p_driving = p_interp_func(t)
+    pressure = p_gas_0 * (R0/R)**(3*K_POLY) - p_driving
+
+    # 4. Surface Term
+    if use_marmottant:
+        surface = get_marmottant_pressure(R, Rdot, chi, kappa_s, R0)
+    else:
+        # Clean bubble (Water only)
+        surface = -2 * GAMMA / R
+
+    # RP Equation: rho * (R*Rddot + 3/2*Rdot^2) = Terms
+    numerator = pressure + viscous + surface
+    Rddot = (numerator / RHO - inertial) / R
     
     return [Rdot, Rddot]
 
-#============================== Optimization Module ===========================#
-
-# 1. Define Fitting Window (55us - 71us)
-mask = (t_r_exp_aligned >= 55e-6) & (t_r_exp_aligned <= 71e-6)
-t_fit = t_r_exp_aligned[mask]
-r_fit_m = r_r_exp[mask] * 1e-6 
-
-print("==================================================")
-print(f"Optimization Window: {len(t_fit)} data points between 55us and 71us")
-print("Running Automatic Optimization... Please wait.")
-
-# --- SCALING FACTORS (CRITICAL!) ---
-# Easier to optimize if parameters scaled
-SCALE_CHI = 1.0       
-SCALE_KS  = 1e9       # Ks is in the order of magnitude of 1e-9, so * 1e9  
-
-def objective_function(params_scaled):
-    """
-    params_scaled: [chi, kappa_s_scaled]
-    """
-    # return real values
-    chi_val = params_scaled[0]
-    ks_val = params_scaled[1] / SCALE_KS 
+# ==============================================================================
+# 4. OPTIMIZATION CORE
+# ==============================================================================
+def run_optimization(t_p, p_raw, t_r, r_r_um, R0):
+    """Optimizes Chi, Kappa_s, and Pressure Scale."""
     
-    # Solve ODE
-    t_span = (t_fit[0], t_fit[-1])
-    try:
-        sol = solve_ivp(lambda t, y: rp_equation(t, y, chi_val, ks_val, True), 
-                        t_span, [R0, 0], method='RK45', rtol=1e-3)
-    except:
-        return 1e6 
-
-    if not sol.success or len(sol.t) < 5:
-        return 1e6
-
-    f_interp = interp1d(sol.t, sol.y[0], kind='linear', fill_value="extrapolate")
-    r_sim_at_fit_times = f_interp(t_fit)
+    # Prepare Fitting Data
+    mask = (t_r >= FIT_WINDOW[0]) & (t_r <= FIT_WINDOW[1])
+    t_fit = t_r[mask]
+    r_fit_m = r_r_um[mask] * 1e-6 
     
-    # Calculate RMSE
-    rmse = np.sqrt(np.mean((r_sim_at_fit_times - r_fit_m)**2))
+    print("="*60)
+    print(f"🚀 Starting Optimization (Window: {FIT_WINDOW[0]*1e6:.1f}-{FIT_WINDOW[1]*1e6:.1f} us)")
+    print(f"   Algorithm: Nelder-Mead (Robust for physics fitting)")
+
+    def objective(params):
+        """Cost function: RMSE between sim and exp."""
+        # Unpack and unscale
+        chi_val = abs(params[0])       # Ensure positive
+        ks_val  = abs(params[1]) / SCALE_KS
+        p_scale = abs(params[2])
+
+        # Create dynamic pressure function
+        p_total = P_INF_STATIC + (p_raw * p_scale)
+        p_interp = interp1d(t_p, p_total, kind='linear', bounds_error=False, fill_value=P_INF_STATIC)
+
+        # Solve ODE
+        try:
+            sol = solve_ivp(
+                lambda t, y: rp_solver(t, y, chi_val, ks_val, R0, p_interp, True),
+                (t_fit[0], t_fit[-1]), [R0, 0], 
+                method='RK45', rtol=1e-3
+            )
+        except:
+            return 1e9
+
+        if not sol.success or len(sol.t) < 5: return 1e9
+
+        # Calculate Error
+        f_eval = interp1d(sol.t, sol.y[0], kind='linear', fill_value="extrapolate")
+        r_sim = f_eval(t_fit)
+        rmse = np.sqrt(np.mean((r_sim - r_fit_m)**2))
+        
+        return rmse * 1e9 # Huge scaling to ensure optimizer sees the gradient
+
+    # Initial Guess: [Chi=0.5, Ks_scaled=4.0, P_scale=1.0]
+    x0 = [0.5, 4.0, 1.0]
     
-    # Multiply error by a huge number to make gradients visible
-    # RMSE is usually ~1e-7, we scale it to ~0.1
-    return rmse * 1e6 
+    # Run Minimize (Nelder-Mead is better when gradients are flat/noisy)
+    # Note: Nelder-Mead in older scipy doesn't support bounds, so we use abs() inside objective
+    # to enforce positivity, but generally it stays within reasonable range.
+    res = minimize(objective, x0, method='Nelder-Mead', tol=1e-4)
 
-# 3. Run Optimization
-# Initial Guesses (Scaled)
-# Chi = 0.5, Ks = 4e-9 -> Scaled Ks = 4.0
-initial_guess_scaled = [0.5, 4.0] 
+    best_chi = abs(res.x[0])
+    best_ks  = abs(res.x[1]) / SCALE_KS
+    best_ps  = abs(res.x[2])
 
-# Bounds (Scaled)
-# Chi: 0.3~2.0
-# Ks: 1.5e-9 ~ 12e-9 -> Scaled: 1.5 ~ 12.0
-bounds_scaled = ((0.0, 2.0), (0.0, 20.0))
+    print(f"✅ Optimization Finished")
+    print(f"   Best Chi      : {best_chi:.4f} N/m")
+    print(f"   Best Ks       : {best_ks:.4e} kg/s")
+    print(f"   Best P_Scale  : {best_ps:.4f}")
+    print("="*60)
 
-# Try 'Nelder-Mead' method first (It is derivative-free, more robust for "bumpy" landscapes)
-result = minimize(objective_function, initial_guess_scaled, bounds=bounds_scaled, method='Nelder-Mead', tol=1e-4)
+    return best_chi, best_ks, best_ps
 
-# Get best parameters (Remember to un-scale Ks!)
-best_chi = result.x[0]
-best_ks = result.x[1] / SCALE_KS
+# ==============================================================================
+# 5. MAIN EXECUTION & PLOTTING
+# ==============================================================================
+if __name__ == "__main__":
+    # 1. Load Data
+    t_p, p_raw, t_r, r_r, R0 = load_data()
 
-print(f"Optimization Success: {result.success}")
-print(f"Best Chi (Elasticity): {best_chi:.4f} N/m")
-print(f"Best Ks  (Viscosity) : {best_ks:.4e} kg/s")
-print(f"Final RMSE error     : {result.fun / 1e6:.2e}") # Un-scale error for display
-print("==================================================")
+    # 2. Optimize
+    chi_opt, ks_opt, p_scale_opt = run_optimization(t_p, p_raw, t_r, r_r, R0)
 
-#============================== Final Plotting ================================#
+    # 3. Final Simulation (Full Duration)
+    # Create optimized pressure function
+    p_final = P_INF_STATIC + (p_raw * p_scale_opt)
+    p_func_final = interp1d(t_p, p_final, kind='linear', bounds_error=False, fill_value=P_INF_STATIC)
 
-# Run final simulation with BEST parameters over the full time range
-t_start = time[0]
-t_end = time[-1]
-t_eval = np.linspace(t_start, t_end, 5000)
-t_span_full = (t_start, t_end)
+    t_span = (t_p[0], t_p[-1])
+    t_eval = np.linspace(t_p[0], t_p[-1], 5000)
 
-sol_m = solve_ivp(lambda t, y: rp_equation(t, y, best_chi, best_ks, True), 
-                t_span_full, [R0, 0], t_eval=t_eval, method='RK45', max_step=1e-8)
+    # Sim 1: With Marmottant (Optimized)
+    print("Running Final Simulation (With Shell)...")
+    sol_m = solve_ivp(
+        lambda t, y: rp_solver(t, y, chi_opt, ks_opt, R0, p_func_final, use_marmottant=True),
+        t_span, [R0, 0], t_eval=t_eval, method='RK45', max_step=1e-8
+    )
 
-sol_no_m = solve_ivp(lambda t, y: rp_equation(t, y, best_chi, best_ks, False), 
-                t_span_full, [R0, 0], t_eval=t_eval, method='RK45', max_step=1e-8)
+    # Sim 2: Without Marmottant (Clean Bubble)
+    print("Running Final Simulation (Without Shell)...")
+    sol_clean = solve_ivp(
+        lambda t, y: rp_solver(t, y, chi_opt, ks_opt, R0, p_func_final, use_marmottant=False),
+        t_span, [R0, 0], t_eval=t_eval, method='RK45', max_step=1e-8
+    )
 
-# Visualization
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
+    # 4. Visualization
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
 
-# Upper Plot Driving Pressure
-ax1.plot(time * 1e6, p_total / 1000, 'k-', alpha=0.6, label='Driving Pressure')
-ax1.set_ylabel('Pressure [kPa]')
-ax1.set_title(f'Driving Signal (Sensitivity: {hydrophone_sensitivity} mV/MPa)')
-ax1.grid(True)
-ax1.legend()
+    # Plot Pressure
+    ax1.plot(t_p * 1e6, p_final / 1000, 'k-', alpha=0.8, label=f'Optimized P (Scale={p_scale_opt:.2f})')
+    ax1.set_ylabel('Pressure [kPa]')
+    ax1.set_title('Driving Pressure Signal')
+    ax1.grid(True, alpha=0.5)
+    ax1.legend()
 
-# Lower Plot Bubble Dynamics
-# 1. Draw simulation with marmottant
-ax2.plot(sol_m.t * 1e6, sol_m.y[0] * 1e6, 'b-', linewidth=1.5, label='With Marmottant')
+    # Plot Radius
+    # Experiment
+    ax2.plot(t_r * 1e6, r_r, 'g.', markersize=4, alpha=0.6, label='Experiment Data')
+    
+    # Simulation: With Shell
+    ax2.plot(sol_m.t * 1e6, sol_m.y[0] * 1e6, 'b-', linewidth=2, label='Marmottant Model')
+    
+    # Simulation: Clean Bubble (Dashed Red)
+    ax2.plot(sol_clean.t * 1e6, sol_clean.y[0] * 1e6, 'r--', linewidth=1.5, alpha=0.8, label='Rayleigh-Plesset (No Shell)')
+    
+    # Highlight fitting region
+    ax2.axvspan(FIT_WINDOW[0]*1e6, FIT_WINDOW[1]*1e6, color='yellow', alpha=0.15, label='Fitting Window')
 
-# 2. Draw simulation without marmottant
-ax2.plot(sol_no_m.t * 1e6, sol_no_m.y[0] * 1e6, '--', linewidth=1.5, label='Without Marmottant')
+    ax2.set_xlabel('Time [us]')
+    ax2.set_ylabel('Radius [um]')
+    ax2.set_title(f'Result: R0={R0*1e6:.2f}um | Chi={chi_opt:.3f} | Ks={ks_opt:.2e}')
+    ax2.grid(True, alpha=0.5)
+    ax2.legend(loc='upper right')
 
-# 3. Add green experiment dots
-ax2.plot(t_r_exp_aligned * 1e6, r_r_exp, 'r.', markersize=4, label='Experiment Data')
-
-# 4. Highlight Fitting Region
-ax2.axvspan(55, 71, color='yellow', alpha=0.1, label='Fitting Window (55-71us)')
-
-ax2.set_xlabel('Time [us]')
-ax2.set_ylabel('Radius [um]')
-ax2.set_title(f'Optimized Fitting: R0={R0*1e6:.2f}um\nChi={best_chi:.3f} N/m, Ks={best_ks:.2e} kg/s')
-ax2.grid(True)
-ax2.legend(loc='upper right')
-
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
