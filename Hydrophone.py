@@ -61,7 +61,7 @@ def plot_pressure_signal(time, pressure, peak_times, peak_pressures):
     """
     Plot the pressure signal and mark detected peaks.
     """
-    plt.figure(figsize=(13, 4))
+    plt.figure(figsize=(13, 3))
     plt.plot(t*10**6, p*10**3, label='Pressure (kPa)')
     plt.xlabel('Time (us)')
     plt.ylabel('Pressure (kPa)')

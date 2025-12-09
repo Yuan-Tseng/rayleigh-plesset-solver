@@ -34,7 +34,6 @@ Data/
 # Outputs & Temporary Files
 # ==========================
 # Ignore generated plots so you don't clutter the repo
-*.png
 *.jpg
 *.pdf
 

@@ -144,10 +144,10 @@ def rp_equation(t, y, chi, kappa_s, use_marmottant):
 
 
 # Add pressure plot
-fig, axes = plt.subplots(4, 1, figsize=(13, 8), sharex=True)
+fig, axes = plt.subplots(4, 1, figsize=(13, 6), sharex=True)
 
 ax_p = axes[0]
-ax_p.plot(time * 1e6, pressure / 1000, 'k-', alpha=0.6, label='Driving Pressure')
+ax_p.plot(time * 1e6, p_total / 1000, 'k-', alpha=0.6, label='Total Driving Pressure')
 ax_p.set_ylabel('Pressure [kPa]')
 ax_p.legend(loc='upper right')
 ax_p.grid(True)
@@ -235,6 +235,26 @@ for i, csv_path in enumerate(radius_files):
     plot_mask = t_r_exp_aligned <= TIME_LIMIT
     ax.plot(t_r_exp_aligned[plot_mask] * 1e6, r_r_exp[plot_mask], 'r.', markersize=3, label=f'Exp (R0={R0*1e6:.2f}um)')
     
+    if np.any(mask):
+        t_window = t_r_exp_aligned[mask] * 1e6 # Convert to us
+        r_window = r_r_exp[mask] # um
+        
+        # Find indices of max and min
+        idx_max = np.argmax(r_window)
+        idx_min = np.argmin(r_window)
+        
+        # Get coordinates
+        t_max, r_max = t_window[idx_max], r_window[idx_max]
+        t_min, r_min = t_window[idx_min], r_window[idx_min]
+        
+        # Plot circles
+        ax.plot(t_max, r_max, 'ko', markerfacecolor='none', markersize=10, markeredgewidth=1.5)
+        ax.plot(t_min, r_min, 'ko', markerfacecolor='none', markersize=10, markeredgewidth=1.5)
+        
+        # Add Text Labels (Adjust offset as needed)
+        ax.text(t_max, r_max + 0.05, f"{r_max:.3f}", ha='center', va='bottom', fontsize=8, color='black', fontweight='bold')
+        ax.text(t_min, r_min - 0.15, f"{r_min:.3f}", ha='center', va='top', fontsize=8, color='black', fontweight='bold')
+
     # Settings
     ax.set_ylabel('Radius [um]')
     ax.grid(True)
