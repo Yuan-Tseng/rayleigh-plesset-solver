@@ -13,7 +13,7 @@ Data/AVI24/Camera_15_16_28/Camera_15_16_28_cropped_picture
 Data/AVI24/Camera_15_21_51/Camera_15_21_51_cropped_picture
 """
 
-INPUT_FOLDER = "Data/AVI24/Camera_15_08_33/Camera_15_08_33_cropped_picture"
+INPUT_FOLDER = "Data/AVI24/Camera_15_21_51/Camera_15_21_51_cropped_picture"
 OUTPUT_FILENAME = "Bubble_Evolution_Grid.png"
 
 FPS = 1e6             # 1 Million FPS (1 us per frame)
@@ -189,7 +189,7 @@ def create_bubble_grid():
     
     # TEXT settings
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.35 
+    font_scale = 0.7 
     thickness = 1
     color = (0, 0, 0) # Black color
     
@@ -208,7 +208,7 @@ def create_bubble_grid():
         time_us = START_TIME_US + (frame_idx / FPS) * 1e6 + TIME_OFFSET
         
         label_text = f"t={int(time_us)}us"
-        cv2.putText(img, label_text, (2, 12), font, font_scale, color, thickness, cv2.LINE_AA)
+        cv2.putText(img, label_text, (2, 17), font, font_scale, color, thickness, cv2.LINE_AA)
         # Add border
         img = cv2.copyMakeBorder(img, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=[0, 0, 0])
         
