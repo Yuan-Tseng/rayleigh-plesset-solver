@@ -16,11 +16,12 @@ p_inf_static = 100000       # ambient pressure [Pa]
 k = 1.0                     # polytropic index (1.07 for isothermal-ish, 1.0 for isothermal, 1.4 for adiabatic)
 hydrophone_sensitivity = 39 # [mV/MPa]
 pressure_scaling = 1        # Pressure Scaling
+initial_guess_scaled = [0.5, 4.0]           # initial guess of chi(viscosity) and kappa(elasticity)
+bounds_scaled = ((0.0, 2.0), (0.0, 15.0))   # boundary for chi(viscosity) and kappa(elasticity)
 
 #================================= CSV File ===================================#
-HYD_FILE = 'Data/cleaned_F1--1.5mhz-100mV-4.csv'                    # Input pressure detected by hydrophone, signal averaged
-EXP_CSV = 'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv'   # temporal radius data computed
-TIME_LIMIT = 75e-6      # Discard data after this threshold due to insufficient illumination 
+HYD_FILE = 'Data/cleaned_F1--1.5mhz-100mV-4.csv'            # Input pressure detected by hydrophone, signal averaged
+TIME_LIMIT = 75e-6                                          # Discard data after this threshold due to insufficient illumination 
 radius_files = [
     'Data/AVI24/Camera_15_02_48/Camera_15_02_48_radius.csv',
     'Data/AVI24/Camera_15_08_33/Camera_15_08_33_radius.csv',
@@ -202,9 +203,6 @@ for i, csv_path in enumerate(radius_files):
         return np.sqrt(np.mean((r_sim - r_fit_m)**2)) * 1e6 
 
     # --- D. Run Optimization ---
-    initial_guess_scaled = [0.5, 4.0] 
-    bounds_scaled = ((0.0, 2.0), (0.0, 15.0))
-    
     result = minimize(loop_objective_function, initial_guess_scaled, bounds=bounds_scaled, method='Nelder-Mead', tol=1e-4)
     
     best_chi = result.x[0]
@@ -240,7 +238,7 @@ for i, csv_path in enumerate(radius_files):
     # Settings
     ax.set_ylabel('Radius [um]')
     ax.grid(True)
-    ax.legend(loc='upper right', fontsize='small') # Legend 包含參數，不設 Title
+    ax.legend(loc='upper right', fontsize='small')
     
     # Highlight fitting region (Optional)
     ax.axvspan(55, 71, color='grey', alpha=0.1)
